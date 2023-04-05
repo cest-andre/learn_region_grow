@@ -168,7 +168,6 @@ class PointTracker():
     def render(self):
         while self.redisplay:
             self.viz = o3d.visualization.VisualizerWithVertexSelection()
-            self.viz.register_selection_changed_callback(self.record_selection_color)
 
             self.redisplay = False
 
@@ -176,6 +175,8 @@ class PointTracker():
 
             self.viz.add_geometry(self.cloud)
             self.viz.update_renderer()
+
+            self.viz.register_selection_changed_callback(self.record_selection_color)
             self.viz.run()
 
             self.viz.clear_geometries()
@@ -201,8 +202,9 @@ class PointTracker():
             colors = np.asarray(self.cloud.colors)
 
             for c in selection:
-                indices = np.where((colors == c).all(axis=1))[0]
-                colors[indices] = self.init_color
+                if (c != self.init_color).all():
+                    indices = np.where((colors == c).all(axis=1))[0]
+                    colors[indices] = self.init_color
 
             self.cloud.colors = o3d.utility.Vector3dVector(colors)
 
@@ -213,7 +215,6 @@ class PointTracker():
                 self.redisplay = True
                 self.viz.close()
 
-        self.viz.clear_picked_points()
 
 
 def merge_segments(cloud):
