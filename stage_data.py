@@ -95,7 +95,7 @@ for AREA in AREAS:
 			U,S,V = np.linalg.svd(cov)
 			normals.append(np.fabs(V[2]))
 			curvature = S[2] / (S[0] + S[1] + S[2])
-			curvatures.append(np.fabs(curvature)) 
+			curvatures.append(np.fabs(curvature))
 		normals = np.array(normals)
 		curvatures = np.array(curvatures)
 		curvatures = curvatures/curvatures.max()
@@ -139,8 +139,8 @@ for AREA in AREAS:
 
 				#determine the current points and the neighboring points
 				currentPoints = points[currentMask, :].copy()
-				newMinDims = minDims.copy()	
-				newMaxDims = maxDims.copy()	
+				newMinDims = minDims.copy()
+				newMaxDims = maxDims.copy()
 				newMinDims -= 1
 				newMaxDims += 1
 				mask = np.logical_and(np.all(point_voxels>=newMinDims,axis=1), np.all(point_voxels<=newMaxDims, axis=1))
@@ -204,7 +204,7 @@ for AREA in AREAS:
 #					savePCD('tmp/%d-cloud.pcd'%save_id, points[currentMask])
 #					save_id += 1
 					print('AREA %s room %d target %d: %d steps %d/%d (%.2f/%.2f IOU)'%(str(AREA), room_id, target_id, steps, np.sum(currentMask), np.sum(gt_mask), iou, originalScore))
-					break 
+					break
 				else:
 					if steps < 500 and (np.any(expandClass) or np.any(rejectClass)): #continue growing
 						#has matching neighbors: expand in those directions
@@ -228,7 +228,7 @@ for AREA in AREAS:
 #							savePCD('tmp/%d-cloud.pcd'%save_id, points[currentMask])
 #							save_id += 1
 							print('AREA %s room %d target %d: %d steps %d/%d (%.2f/%.2f IOU)'%(str(AREA), room_id, target_id, steps, np.sum(currentMask), np.sum(gt_mask), iou, originalScore))
-						break 
+						break
 
 	for i in range(len(stacked_points)):
 		center = np.median(stacked_points[i][:,:2], axis=0)
@@ -255,4 +255,3 @@ for AREA in AREAS:
 	h5_fout.create_dataset( 'steps', data=stacked_steps, compression='gzip', compression_opts=4, dtype=np.int32)
 	h5_fout.create_dataset( 'complete', data=stacked_complete, compression='gzip', compression_opts=4, dtype=np.float32)
 	h5_fout.close()
-

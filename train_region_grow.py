@@ -1,62 +1,113 @@
-from learn_region_grow_util import *
+import os
 import sys
 import time
+import numpy
 
-BATCH_SIZE = 100
+MODEL_PATH = None
+BATCH_SIZE = 32
 NUM_INLIER_POINT = 512
 NUM_NEIGHBOR_POINT = 512
-MAX_EPOCH = 50
+CURRENT_EPOCH = 0
+MAX_EPOCH = 64
+TRANSFORMER = False
 VAL_STEP = 7
-TRAIN_AREA = ['1','2','3','4','6']
-#VAL_AREA = ['5']
+TRAIN_AREA = ['1','2','3','scannet','4','5','6']
 VAL_AREA = None
-FEATURE_SIZE = 13
-MULTISEED = 8
+#	Set to 12 as curvatures may be nan in scan data.
+FEATURE_SIZE = 12
+MULTISEED = 16
 LITE = None
 initialized = False
 cross_domain = False
 numpy.random.seed(0)
 numpy.set_printoptions(2,linewidth=100,suppress=True,sign=' ')
 for i in range(len(sys.argv)):
-	if sys.argv[i]=='--train-area':
+	if sys.argv[i]=='--train_area':
 		TRAIN_AREA = sys.argv[i+1].split(',')
-	if sys.argv[i]=='--val-area':
+	if sys.argv[i]=='--val_area':
 		VAL_AREA = sys.argv[i+1].split(',')
-	if sys.argv[i]=='--cross-domain':
-		cross_domain = True
+	# if sys.argv[i]=='--cross_domain':
+	# 	cross_domain = True
 	if sys.argv[i]=='--multiseed':
 		MULTISEED = int(sys.argv[i+1])
-	if sys.argv[i]=='--lite':
-		LITE = int(sys.argv[i+1])
+	# if sys.argv[i]=='--lite':
+	# 	LITE = int(sys.argv[i+1])
 
-config = tf.ConfigProto()
-config.gpu_options.allow_growth = True
-config.allow_soft_placement = True
-config.log_device_placement = False
-sess = tf.Session(config=config)
-net = LrgNet(BATCH_SIZE, 1, NUM_INLIER_POINT, NUM_NEIGHBOR_POINT, FEATURE_SIZE, LITE)
-saver = tf.train.Saver()
-if cross_domain:
-	MODEL_PATH = 'models/cross_domain/lrgnet_%s.ckpt'%TRAIN_AREA[0]
-elif FEATURE_SIZE==6:
-	MODEL_PATH = 'models/lrgnet_model%s_xyz.ckpt'%VAL_AREA[0]
-elif FEATURE_SIZE==9:
-	MODEL_PATH = 'models/lrgnet_model%s_xyzrgb.ckpt'%VAL_AREA[0]
-elif FEATURE_SIZE==12:
-	MODEL_PATH = 'models/lrgnet_model%s_xyzrgbn.ckpt'%VAL_AREA[0]
+	if sys.argv[i]=='--batch_size':
+		BATCH_SIZE = int(sys.argv[i+1])
+	if sys.argv[i]=='--current_epoch':
+		CURRENT_EPOCH = int(sys.argv[i+1])
+	if sys.argv[i]=='--max_epoch':
+		MAX_EPOCH = int(sys.argv[i+1])
+	if sys.argv[i]=='--transformer':
+		TRANSFORMER = True
+	if sys.argv[i]=='--num_points':
+		NUM_INLIER_POINT = NUM_NEIGHBOR_POINT = int(sys.argv[i+1])
+	if sys.argv[i]=='--feature_size':
+		FEATURE_SIZE = int(sys.argv[i+1])
+	if sys.argv[i]=='--model_path':
+		MODEL_PATH = str(sys.argv[i+1])
+
+config = None
+sess = None
+saver = None
+
+net = None
+
+if TRANSFORMER:
+	from lrg_transformer import *
+	net = LrgNet_Keras(BATCH_SIZE, 1, NUM_INLIER_POINT, NUM_NEIGHBOR_POINT, FEATURE_SIZE, LITE)
+
+	net.compile(
+		optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
+		run_eagerly=False
+	)
+
+	if CURRENT_EPOCH != 0:
+		net.load_weights(os.path.join(MODEL_PATH, f"{CURRENT_EPOCH}ep.ckpt")).expect_partial()
+
 else:
-	# use full set of features
-	if NUM_INLIER_POINT!=512 or NUM_NEIGHBOR_POINT!=512:
-		MODEL_PATH = 'models/lrgnet_model%s_i_%d_j_%d.ckpt'%(VAL_AREA[0], NUM_INLIER_POINT, NUM_NEIGHBOR_POINT)
-	elif LITE is not None:
-		MODEL_PATH = 'models/lrgnet_model%s_lite_%d.ckpt'%(VAL_AREA[0], LITE)
+	from learn_region_grow_util import *
+
+	config = tf.compat.v1.ConfigProto()
+	config.gpu_options.allow_growth = True
+	config.allow_soft_placement = True
+	config.log_device_placement = False
+
+	sess = tf.compat.v1.Session(config=config)
+
+	net = LrgNet(BATCH_SIZE, 1, NUM_INLIER_POINT, NUM_NEIGHBOR_POINT, FEATURE_SIZE, LITE)
+
+	saver = tf.compat.v1.train.Saver()
+
+	if CURRENT_EPOCH != 0:
+		saver.restore(sess, os.path.join(MODEL_PATH, f"{CURRENT_EPOCH}ep.ckpt"))
 	else:
-		MODEL_PATH = 'models/lrgnet_model%s.ckpt'%VAL_AREA[0]
+		init = tf.compat.v1.global_variables_initializer()
+		sess.run(init, {})
+
+#	Commented out as MODEL_PATH will now be passed by script argument.
+#
+# if cross_domain:
+# 	MODEL_PATH = 'models/cross_domain/lrgnet_%s.ckpt'%TRAIN_AREA[0]
+# elif FEATURE_SIZE==6:
+# 	MODEL_PATH = 'models/lrgnet_model%s_xyz.ckpt'%VAL_AREA[0]
+# elif FEATURE_SIZE==9:
+# 	MODEL_PATH = 'models/lrgnet_model%s_xyzrgb.ckpt'%VAL_AREA[0]
+# elif FEATURE_SIZE==12:
+# 	MODEL_PATH = 'models/lrgnet_model%s_xyzrgbn.ckpt'%VAL_AREA[0]
+# else:
+# 	# use full set of features
+# 	if NUM_INLIER_POINT!=512 or NUM_NEIGHBOR_POINT!=512:
+# 		MODEL_PATH = 'models/lrgnet_model%s_i_%d_j_%d.ckpt'%(VAL_AREA[0], NUM_INLIER_POINT, NUM_NEIGHBOR_POINT)
+# 	elif LITE is not None:
+# 		MODEL_PATH = 'models/lrgnet_model%s_lite_%d.ckpt'%(VAL_AREA[0], LITE)
+# 	else:
+# 		MODEL_PATH = 'models/lrgnet_model%s.ckpt'%VAL_AREA[0]
+
 epoch_time = []
 
-init = tf.global_variables_initializer()
-sess.run(init, {})
-for epoch in range(MAX_EPOCH):
+for epoch in range(CURRENT_EPOCH, MAX_EPOCH):
 
 	if not initialized or MULTISEED > 1:
 		initialized = True
@@ -75,6 +126,7 @@ for epoch in range(MAX_EPOCH):
 				try:
 					f = h5py.File('data/multiseed/seed%d_area%s.h5'%(SEED,AREA),'r')
 				except OSError:
+					print("OSError")
 					continue
 			else:
 				f = h5py.File('data/staged_area%s.h5'%(AREA),'r')
@@ -117,7 +169,7 @@ for epoch in range(MAX_EPOCH):
 					train_neighbor_points.append(neighbor_points[idp:idp+neighbor_count[i], :FEATURE_SIZE])
 					train_add.append(add[idp:idp+neighbor_count[i]])
 					idp += neighbor_count[i]
-			if FEATURE_SIZE is None: 
+			if FEATURE_SIZE is None:
 				FEATURE_SIZE = points.shape[1]
 			f.close()
 
@@ -172,15 +224,22 @@ for epoch in range(MAX_EPOCH):
 				subset = list(range(N)) + list(numpy.random.choice(N, NUM_NEIGHBOR_POINT-N, replace=True))
 			neighbor_points[i,:,:] = train_neighbor_points[points_idx][subset, :]
 			input_add[i,:] = train_add[points_idx][subset]
-		_, ls, ap, ar, rp, rr = sess.run([net.train_op, net.loss, net.add_prc, net.add_rcl, net.remove_prc, net.remove_rcl],
-			{net.inlier_pl:inlier_points, net.neighbor_pl:neighbor_points, net.add_mask_pl:input_add, net.remove_mask_pl:input_remove})
+
+		if TRANSFORMER:
+			ls = net.train_on_batch([inlier_points, neighbor_points], y=[input_remove, input_add])
+		else:
+			_, ls, ap, ar, rp, rr = sess.run([net.train_op, net.loss, net.add_prc, net.add_rcl, net.remove_prc, net.remove_rcl],
+				{net.inlier_pl:inlier_points, net.neighbor_pl:neighbor_points, net.add_mask_pl:input_add, net.remove_mask_pl:input_remove})
+			
 		loss_arr.append(ls)
-		add_prc_arr.append(ap)
-		add_rcl_arr.append(ar)
-		rmv_prc_arr.append(rp)
-		rmv_rcl_arr.append(rr)
+	# 	add_prc_arr.append(ap)
+	# 	add_rcl_arr.append(ar)
+	# 	rmv_prc_arr.append(rp)
+	# 	rmv_rcl_arr.append(rr)
 	epoch_time.append(time.time() - start_time)
-	print("Epoch %d loss %.2f add %.2f/%.2f rmv %.2f/%.2f"%(epoch,numpy.mean(loss_arr),numpy.mean(add_prc_arr),numpy.mean(add_rcl_arr),numpy.mean(rmv_prc_arr), numpy.mean(rmv_rcl_arr)))
+	# print("Epoch %d loss %.2f add %.2f/%.2f rmv %.2f/%.2f"%(epoch+1,numpy.mean(loss_arr),numpy.mean(add_prc_arr),numpy.mean(add_rcl_arr),numpy.mean(rmv_prc_arr), numpy.mean(rmv_rcl_arr)))
+
+	print("Epoch %d train loss %.2f"%(epoch+1,numpy.mean(loss_arr)))
 
 	if VAL_AREA is not None and epoch % VAL_STEP == VAL_STEP - 1:
 		loss_arr = []
@@ -208,15 +267,25 @@ for epoch in range(MAX_EPOCH):
 					subset = list(range(N)) + list(numpy.random.choice(N, NUM_NEIGHBOR_POINT-N, replace=True))
 				neighbor_points[i,:,:] = val_neighbor_points[points_idx][subset, :]
 				input_add[i,:] = val_add[points_idx][subset]
-			ls, ap, ar, rp, rr = sess.run([net.loss, net.add_prc, net.add_rcl, net.remove_prc, net.remove_rcl],
-				{net.inlier_pl:inlier_points, net.neighbor_pl:neighbor_points, net.add_mask_pl:input_add, net.remove_mask_pl:input_remove})
+
+			if TRANSFORMER:
+				ls = net.test_on_batch([inlier_points, neighbor_points], y=[input_remove, input_add])
+			else:
+				ls, ap, ar, rp, rr = sess.run([net.loss, net.add_prc, net.add_rcl, net.remove_prc, net.remove_rcl],
+					{net.inlier_pl:inlier_points, net.neighbor_pl:neighbor_points, net.add_mask_pl:input_add, net.remove_mask_pl:input_remove})
+
 			loss_arr.append(ls)
-			add_prc_arr.append(ap)
-			add_rcl_arr.append(ar)
-			rmv_prc_arr.append(rp)
-			rmv_rcl_arr.append(rr)
-		print("Validation %d loss %.2f add %.2f/%.2f rmv %.2f/%.2f"%(epoch,numpy.mean(loss_arr),numpy.mean(add_prc_arr),numpy.mean(add_rcl_arr),numpy.mean(rmv_prc_arr), numpy.mean(rmv_rcl_arr)))
+			# add_prc_arr.append(ap)
+			# add_rcl_arr.append(ar)
+			# rmv_prc_arr.append(rp)
+			# rmv_rcl_arr.append(rr)
+		# print("Validation %d loss %.2f add %.2f/%.2f rmv %.2f/%.2f"%(epoch+1,numpy.mean(loss_arr),numpy.mean(add_prc_arr),numpy.mean(add_rcl_arr),numpy.mean(rmv_prc_arr), numpy.mean(rmv_rcl_arr)))
+		print("Epoch %d validation loss %.2f"%(epoch+1,numpy.mean(loss_arr)))
+
+	if TRANSFORMER:
+		net.save_weights(os.path.join(MODEL_PATH, f"{epoch+1}ep.ckpt"))
+	else:
+		saver.save(sess, os.path.join(MODEL_PATH, f"{epoch+1}ep.ckpt"))
 
 print("Avg Epoch Time: %.3f" % numpy.mean(epoch_time))
-print("GPU Mem: %.1f" % (sess.run(tf.contrib.memory_stats.MaxBytesInUse()) / 1.0e6))
-saver.save(sess, MODEL_PATH)
+# print("GPU Mem: %.1f" % (sess.run(tf.contrib.memory_stats.MaxBytesInUse()) / 1.0e6))
